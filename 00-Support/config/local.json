@@ -1,0 +1,42 @@
+{
+  "output_dir": "00-Support/results",
+  "analysis": {
+    "seed": 42,
+    "permutations": 999,
+    "bootstrap": 1000,
+    "sg_window": 7,
+    "sg_order": 2
+  },
+  "training": {
+    "deterministic": true
+  },
+  "earth_engine": {
+    "project": "YOUR_EARTH_ENGINE_PROJECT",
+    "drive_folder": "LST_NAT_exports",
+    "submit_exports": false
+  },
+  "inputs": {
+    "stations": "../Downscale/Data/Station/SAT_Hourly.shp",
+    "station_native": "../Relationship/Data/SAT_LST.shp",
+    "station_covariates": "../Relationship/Data/SAT_LST_Cov.shp",
+    "embedding_fine": "00-Support/data/embedding_10m.tif",
+    "native_lst": {
+      "T1": "../Downscale/Data/TRIMS LST/LST Day Terra.tif",
+      "T2": "../Downscale/Data/TRIMS LST/LST Day Aqua.tif",
+      "T3": "../Downscale/Data/TRIMS LST/LST Night Terra.tif",
+      "T4": "../Downscale/Data/TRIMS LST/LST Night Aqua.tif"
+    },
+    "legacy_multiscale": {
+      "T1": "../Scale Effect/RES/Day Terra Multiscale.gpkg",
+      "T2": "../Scale Effect/RES/Day Aqua Multiscale.gpkg",
+      "T3": "../Scale Effect/RES/Night Terra Multiscale.gpkg",
+      "T4": "../Scale Effect/RES/Night Aqua Multiscale.gpkg"
+    },
+    "legacy_prediction_csv": {
+      "T1": "../Downscale/Data/Pred LST/Day Terra",
+      "T2": "../Downscale/Data/Pred LST/Day Aqua",
+      "T3": "../Downscale/Data/Pred LST/Night Terra",
+      "T4": "../Downscale/Data/Pred LST/Night Aqua"
+    }
+  }
+}

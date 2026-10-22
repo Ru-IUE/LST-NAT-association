@@ -1,0 +1,42 @@
+{
+  "output_dir": "00-Support/results",
+  "analysis": {
+    "seed": 42,
+    "permutations": 999,
+    "bootstrap": 1000,
+    "sg_window": 7,
+    "sg_order": 2
+  },
+  "training": {
+    "deterministic": true
+  },
+  "earth_engine": {
+    "project": "YOUR_EARTH_ENGINE_PROJECT",
+    "drive_folder": "LST_NAT_exports",
+    "submit_exports": false
+  },
+  "inputs": {
+    "stations": "00-Support/data/stations.gpkg",
+    "station_native": "00-Support/results/preprocessing/stations_native.gpkg",
+    "station_covariates": "00-Support/results/preprocessing/stations_covariates.gpkg",
+    "embedding_fine": "00-Support/data/embedding_10m.tif",
+    "native_lst": {
+      "T1": "00-Support/data/lst/T1.tif",
+      "T2": "00-Support/data/lst/T2.tif",
+      "T3": "00-Support/data/lst/T3.tif",
+      "T4": "00-Support/data/lst/T4.tif"
+    },
+    "legacy_multiscale": {
+      "T1": "00-Support/data/legacy/T1.gpkg",
+      "T2": "00-Support/data/legacy/T2.gpkg",
+      "T3": "00-Support/data/legacy/T3.gpkg",
+      "T4": "00-Support/data/legacy/T4.gpkg"
+    },
+    "legacy_prediction_csv": {
+      "T1": "00-Support/data/legacy/T1",
+      "T2": "00-Support/data/legacy/T2",
+      "T3": "00-Support/data/legacy/T3",
+      "T4": "00-Support/data/legacy/T4"
+    }
+  }
+}
