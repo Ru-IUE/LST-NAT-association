@@ -1,10 +1,6 @@
-# LST–NAT association across urban–rural gradients
+# LST-NAT association across urban–rural gradients
 
-Code accompanying **Proxy or Mismatch? Spatiotemporal association between land surface temperature and near-surface air temperature across urban-rural gradients**.
-
-This repository organizes the analysis into preprocessing, association analysis, downscaling, scale analysis, and supplementary sensitivity checks. It implements the methods in the supplied manuscript and Supplementary Material. It does not contain the meteorological observations, raster datasets, trained weights, or precomputed manuscript results.
-
-**Reproducibility status:** substantive differences were found between the working notebooks and the manuscript, including numerical plotting offsets, manually ranked knees, different noise models, and missing complete-block residual correction. This version removes those adjustments. Recomputed values must be checked before being used as replacements for the manuscript figures.
+This directory contains code for analyzing associations between land surface temperature (LST) and near-surface air temperature (NAT) across urban–rural gradients. The workflow covers preprocessing, association analysis, downscaling, scale analysis, and sensitivity checks. Input data and trained weights must be supplied through the configuration files.
 
 ## Repository layout
 
@@ -21,11 +17,11 @@ This repository organizes the analysis into preprocessing, association analysis,
     scaling.py             Scale-response curves and knee summaries
     sensitivity.py         S5 pixel-noise experiment
     plotting.py            Figures generated from exported tables
-  config/                  example.json (public template), local.json (local diagnostics)
+  config/                  example.json (configuration template)
   data/README.md           Input data contract
   requirements/            base.txt, downscaling.txt, gee.txt
   tests/                   Method checks on synthetic data
-  results/                 Created at runtime; ignored by Git
+  results/                 Generated analysis outputs and run records
 01-Relationship/
   00-Collect Auxiliary Variables.py
   01-Correlation.ipynb
@@ -46,13 +42,13 @@ This repository organizes the analysis into preprocessing, association analysis,
   06-Downscaling Error Influence (S6).py
 ```
 
-The top-level folders follow execution order: `00-Support` holds the shared code and configuration, followed by the three workflow steps `01-Relationship` → `02-Downscale` → `03-Scale-Effect`. Inside each step folder the `NN-` prefix gives the execution order. Original entry names are kept after the prefix; `00-Collect Auxiliary Variables.py` and `00-Export Embeddings.py` expose preprocessing that previously lived in notebook cells. Shared implementations live only in `00-Support/lstnat`, so corrected methods are not duplicated across notebooks. Paired `(Lee)` and non-`(Lee)` notebooks are equivalent entry points that write the same unified tables; run either variant. `06-Downscaling Error Influence (S6).py` is a standalone legacy implementation of the supplementary S6 experiment; it reads the multiscale GeoPackages directly and does not import `00-Support`.
+The top-level folders follow execution order: `00-Support` holds the shared code and configuration, followed by the three workflow steps `01-Relationship` → `02-Downscale` → `03-Scale-Effect`. Inside each step folder the `NN-` prefix gives the execution order. `00-Collect Auxiliary Variables.py` and `00-Export Embeddings.py` provide the preprocessing entry points. Shared implementations live in `00-Support/lstnat`. Paired `(Lee)` and non-`(Lee)` notebooks are equivalent entry points that write the same unified tables; run either variant. `06-Downscaling Error Influence (S6).py` is a standalone downscaling-error experiment; it reads multiscale GeoPackages directly and does not import `00-Support`.
 
 Notebooks are thin entry points: each one runs the matching `00-Support/run.py` command or reads the tables that command produced, so the notebook and command-line routes yield identical results. The module-by-module map is in [00-Support/README.md](00-Support/README.md).
 
 ## Environment
 
-Python 3.10 or newer is required. `00-Support/requirements/` separates the analysis (`base.txt`), TensorFlow (`downscaling.txt`), and Earth Engine (`gee.txt`) groups; they list compatible lower bounds rather than a reconstructed historical lockfile. TensorFlow is only needed for training and inference, and `earthengine-api` only for the two scripts that query Earth Engine.
+Python 3.10 or newer is required. `00-Support/requirements/` separates the analysis (`base.txt`), TensorFlow (`downscaling.txt`), and Earth Engine (`gee.txt`) groups; they specify minimum dependency versions. TensorFlow is only needed for training and inference, and `earthengine-api` only for the two scripts that query Earth Engine.
 
 Install what you need (`pip install -r 00-Support/requirements/base.txt`, plus `downscaling.txt` or `gee.txt`), then run from the repository root:
 
@@ -62,22 +58,22 @@ $py = 'python'    # or a full path such as C:\Envs\Conda\envs\myenv\python.exe
 & $py -m unittest discover -s 00-Support/tests -v
 ```
 
-`check` reports which dependencies and configured inputs are available; with the untouched template every input is reported `missing`, which is expected until you fill in the paths. The diagnostic configuration `local.json` is described under [Diagnostics](#diagnostics-using-the-existing-project).
+`check` reports which dependencies and configured inputs are available. Fill in the input paths before running the analysis; unavailable files are reported as `missing`.
 
 ## Inputs and configuration
 
 Use `00-Support/config/example.json` as the public template. All relative paths resolve from this repository root, regardless of the working directory. Configure the files described in [00-Support/data/README.md](00-Support/data/README.md). Four time keys are used throughout:
 
-| Key | Satellite observation | Existing NAT field | Native LST field |
+| Key | Satellite observation | NAT input field | Native LST field |
 | --- | --- | --- | --- |
 | T1 | Terra day, 10:30 | TEM10 | TD_LST |
 | T2 | Aqua day, 13:30 | TEM13 | AD_LST |
 | T3 | Terra night, 22:30 | TEM22 | TN_LST |
 | T4 | Aqua night, 01:30 | TEM01 | AN_LST |
 
-The prepared hourly/monthly station fields are inputs. Raw station quality control and day rollover cannot be reconstructed from these files alone. No averaging between adjacent hour fields is silently introduced.
+Provide prepared hourly/monthly station fields, with station quality control and day alignment completed before analysis. The code reads the configured hour fields directly.
 
-All generated products are restricted to `output_dir` inside this repository. The supplied local configurations read the original project directories and write only to `Upload Code/00-Support/results`. They are excluded from Git.
+All generated products are restricted to `output_dir` inside `Upload Code`. The configuration template sets this to `00-Support/results`.
 
 ## Running the workflow
 
@@ -122,26 +118,23 @@ Run the following from this directory after preparing your configuration. Replac
 
    The four global scale curves use global Lee's L. Zone curves use the mean of local contributions from the same full-station spatial graph. Spearman curves provide the S4 sensitivity comparison. The S5 stress test uses the same corrected baseline, aggregation scales, SG settings, and knee rule for 0%, 5%, and 10% pixelwise multiplicative Gaussian noise.
 
-5. Optionally rerun the standalone S6 downscaling-error experiment. This legacy script reads the multiscale GeoPackages directly and is independent of the corrected pipeline.
+5. Optionally run the standalone S6 downscaling-error experiment. Review its input and output path settings before execution. It reads multiscale GeoPackages directly and runs independently of `00-Support/run.py`.
 
    ```powershell
    & $py "03-Scale-Effect/06-Downscaling Error Influence (S6).py"
    ```
 
-## Diagnostics using the existing project
+## Optional table and CSV diagnostics
 
-`00-Support/config/local.json` points to the original station tables, native rasters, prediction CSVs, and legacy multiscale tables. It allows analysis of the existing files without copying approximately 52 GB of data. Its original precomputed covariates retain their original provenance; an SRTM source discrepancy relative to the manuscript remains unresolved. It cannot supply the missing complete 10 m embedding raster.
+The configuration keys `legacy_multiscale` and `legacy_prediction_csv` accept multiscale GeoPackages and per-station prediction CSVs, respectively. Configure these optional inputs in your configuration file before running the corresponding diagnostics.
 
 ```powershell
-& $py 00-Support/run.py correlation --config 00-Support/config/local.json
-& $py 00-Support/run.py spatial --config 00-Support/config/local.json
-& $py 00-Support/run.py legacy-scale --config 00-Support/config/local.json
+& $py 00-Support/run.py legacy-scale --config 00-Support/config/example.json
+& $py 00-Support/run.py sample-csv --config 00-Support/config/example.json
 ```
 
-`legacy-scale` is a diagnostic of the old multiscale tables. It does not certify their residual correction. `sample-csv` retains station-ID-based sampling of the legacy CSV inputs for diagnostics; it is not the main residual-corrected workflow. Existing `Raw_LST` columns are never treated as proof of block correction.
+`legacy-scale` computes scale statistics from the supplied multiscale tables. `sample-csv` samples per-station CSVs using station IDs. The main `sample` workflow instead requires fine rasters tagged as residual-corrected; neither diagnostic applies complete-block residual correction.
 
 ## Output and reporting
 
-Results are written as CSV, GeoPackage, GeoTIFF, JSON, SVG, and PNG. Each completed command records the effective configuration, package versions, and UTC time under `00-Support/results/runs`. Diagnostic overrides such as `--permutations 19 --bootstrap 20` are marked explicitly. For the manuscript settings use 999 permutations and B = 1,000. The minimum attainable permutation p value is 0.001; do not describe it as strictly less than 0.001.
-
-No license or archival DOI has been assigned on the authors' behalf. Before public release, the authors should choose the code license and confirm that the updated method/results correspondence still matches the manuscript.
+Results are written as CSV, GeoPackage, GeoTIFF, JSON, SVG, and PNG. Commands using the shared run-record mechanism save the effective configuration, package versions, and UTC time under `<output_dir>/runs` (default: `00-Support/results/runs`). Diagnostic overrides such as `--permutations 19 --bootstrap 20` are marked explicitly. The configuration template uses 999 permutations and 1,000 bootstrap resamples. With 999 permutations, the minimum attainable permutation p value is 0.001.

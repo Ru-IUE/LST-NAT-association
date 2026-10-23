@@ -4,7 +4,7 @@ Entry points live in `01-Relationship`, `02-Downscale`, and `03-Scale-Effect`; t
 
 ```text
 run.py                    command-line entry point for every workflow step
-config/                   example.json (public template) and local.json (local diagnostics)
+config/                   example.json (configuration template)
 data/README.md            input data contract; configured input files are read or placed here
 requirements/             base.txt, downscaling.txt, gee.txt
 tests/test_methods.py     method checks on synthetic data
@@ -24,8 +24,8 @@ Run from the `Upload Code` root:
 
 ```powershell
 $py = 'C:\Users\15093\.conda\envs\Processing\python.exe'
-& $py 00-Support/run.py check --config 00-Support/config/local.json
+& $py 00-Support/run.py check --config 00-Support/config/example.json
 & $py -m unittest discover -s 00-Support/tests -v
 ```
 
-Inputs remain relative to `Upload Code`, so the supplied local configurations continue to read the untouched sibling project folders. Generated outputs stay under `00-Support/results`.
+Relative input paths resolve from the `Upload Code` root. Configure the required files using `config/example.json` and the input contract in `data/README.md`. Generated outputs stay under the configured `output_dir`, which defaults to `00-Support/results`.
