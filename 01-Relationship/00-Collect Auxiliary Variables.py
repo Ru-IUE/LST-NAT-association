@@ -11,7 +11,9 @@ def main():
     import ee
     import json
     import pandas as pd
-    from lstnat.raster import read_stations
+    from lstnat.raster import read_stations, station_support, configured_support
+    from pyproj import Transformer
+    from shapely.ops import transform as transform_geometry
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(ROOT/"00-Support/config/example.json"))
     args = parser.parse_args()
@@ -19,12 +21,15 @@ def main():
     ee.Initialize(project=cfg["earth_engine"]["project"])
     frame = read_stations(input_path(cfg, "station_native")).to_crs(4326)
     frame["_uid"] = range(len(frame))
-    points = ee.FeatureCollection(json.loads(frame[["_uid", "geometry"]].to_json()))
-    proj = ee.Projection("EPSG:3857")
-    def square(feature):
-        geom = feature.geometry().transform(proj, 1).buffer(500).bounds(1, proj)
-        return ee.Feature(geom.transform("EPSG:4326", 1)).copyProperties(feature)
-    windows = points.map(square)
+    features = []
+    support = configured_support(cfg)
+    for uid, point in zip(frame._uid, frame.geometry):
+        crs, square = station_support(point.x, point.y, 1000, support)
+        to_geographic = Transformer.from_crs(crs, 4326, always_xy=True).transform
+        polygon = transform_geometry(to_geographic, square)
+        geometry = ee.Geometry.Polygon([list(polygon.exterior.coords)], proj="EPSG:4326", geodesic=False)
+        features.append(ee.Feature(geometry, {"_uid": int(uid)}))
+    windows = ee.FeatureCollection(features)
     surface = ee.ImageCollection("MODIS/061/MOD09A1").filterDate("2020-10-01", "2020-11-01")
     def ndvi(image):
         return image.normalizedDifference(["sur_refl_b02", "sur_refl_b01"]).rename("NDVI")
@@ -45,8 +50,11 @@ def main():
         frame = frame.drop(columns=[name], errors="ignore").merge(
             table[["_uid", value]].rename(columns={value: name}), on="_uid", how="left", validate="one_to_one")
     frame = frame.drop(columns="_uid")
+    frame["covariate_support"] = support
+    frame["covariate_side_m"] = 1000
     frame.to_file(output_path(cfg, "preprocessing", "stations_covariates.gpkg"), driver="GPKG", layer="stations")
-    save_run(cfg, "covariates", ndvi_ndbi_qa_filter=False, elevation_processing_scale_m=90)
+    save_run(cfg, "covariates", ndvi_ndbi_qa_filter=False, elevation_processing_scale_m=90,
+             support=support, side_m=1000)
 
 
 if __name__ == "__main__":

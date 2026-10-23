@@ -1,0 +1,23 @@
+# Local research data and generated products
+00-Support/config/local*.json
+00-Support/results/
+00-Support/data/**
+!00-Support/data/README.md
+**/Data/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+.env
+*.keras
+*.h5
+*.tif
+*.tiff
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.CPG
+github_release.zip

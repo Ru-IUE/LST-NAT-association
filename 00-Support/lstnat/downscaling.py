@@ -33,6 +33,14 @@ def prepare_coarse(cfg, time):
     import rasterio
     from rasterio.warp import reproject, Resampling
     from .raster import validate_fine
+    configured = cfg.get("inputs", {}).get("embedding_coarse", {}).get(time)
+    if configured:
+        path = input_path(cfg, "embedding_coarse", time)
+        with rasterio.open(path) as emb, rasterio.open(input_path(cfg, "native_lst", time)) as native:
+            if emb.count != 64 or (emb.crs, emb.transform, emb.shape) != (native.crs, native.transform, native.shape):
+                raise ValueError("GEE mean embeddings must contain 64 bands on the exact native TRIMS grid")
+        return path
+    # Explicit local fallback for configurations without GEE coarse exports.
     path = output_path(cfg, "preprocessing", f"{time}_embedding_mean.tif")
     with ExitStack() as stack:
         native = stack.enter_context(rasterio.open(input_path(cfg, "native_lst", time)))
@@ -107,7 +115,9 @@ def train(cfg, times):
                  "independent_10m_validation": False, "architecture": spec,
                  "optimizer": keras.optimizers.serialize(optimizer)}
         output_path(cfg, "validation", time+"_model_metrics.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
-        save_run(cfg, "train", time=time)
+        save_run(cfg, "train", time=time, embedding_coarse=str(coarse_path),
+                 embedding_aggregation="GEE reduceResolution(mean) export" if cfg.get("inputs", {}).get("embedding_coarse", {}).get(time)
+                 else "local GDAL average fallback")
 
 
 def coarse_ids(fine, window, coarse):
@@ -204,31 +214,32 @@ def predict(cfg, times):
 
 def validate_product(cfg):
     import rasterio
-    from rasterio.windows import from_bounds
     from rasterio.warp import transform
-    from .raster import read_stations, validate_fine
+    from .raster import read_stations, validate_fine, local_grid, configured_support, support_metadata
     import pandas as pd
     stations = read_stations(input_path(cfg, "stations"))
     scores = []
+    support = configured_support(cfg)
     for time in TIMES:
         records = []
         with rasterio.open(output_path(cfg, "downscaling", time+"_uncorrected.tif")) as fine, rasterio.open(input_path(cfg, "native_lst", time)) as native:
             validate_fine(fine)
-            for sid, p in zip(stations.station_id, stations.to_crs(fine.crs).geometry):
-                win = from_bounds(p.x-750, p.y-750, p.x+750, p.y+750, fine.transform).round_offsets().round_lengths()
-                arr = fine.read(1, window=win, masked=True).astype(float).filled(np.nan)
+            for sid, p in zip(stations.station_id, stations.to_crs(4326).geometry):
+                arr, tr, local_crs = local_grid(fine, p.x, p.y, side_m=1500, support=support)
                 rr, cc = np.indices(arr.shape, dtype=float)
-                tr = fine.window_transform(win)
                 xx, yy = tr.c+(cc.ravel()+.5)*tr.a, tr.f+(rr.ravel()+.5)*tr.e
-                xx, yy = transform(fine.crs, native.crs, xx, yy)
+                xx, yy = transform(local_crs, native.crs, xx, yy)
                 samples = np.ma.concatenate(list(native.sample(zip(xx, yy), masked=True))).astype(float).filled(np.nan).ravel()
                 valid = np.isfinite(arr.ravel()) & np.isfinite(samples)
                 if valid.any():
                     records.append({"station_id": sid, "observed": float(samples[valid].mean()),
-                                    "predicted": float(arr.ravel()[valid].mean()), "valid_pixels": int(valid.sum())})
+                                    "predicted": float(arr.ravel()[valid].mean()), "valid_pixels": int(valid.sum()),
+                                    "window_support": support, "window_side_m": 1500,
+                                    "source_crs": fine.crs.to_string()})
         table = pd.DataFrame(records)
         score = metrics(table.observed, table.predicted)
         scores.append({"time": time, **score})
         table.to_csv(output_path(cfg, "validation", time+"_station_windows.csv"), index=False)
     pd.DataFrame(scores).to_csv(output_path(cfg, "validation", "product_metrics.csv"), index=False)
-    save_run(cfg, "validate-product", corrected=False, independent_10m_validation=False)
+    save_run(cfg, "validate-product", corrected=False, independent_10m_validation=False,
+             window_support=support, window_side_m=1500, resampling=support_metadata(support)["sampling_resampling"])

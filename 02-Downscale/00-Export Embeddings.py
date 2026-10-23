@@ -30,15 +30,16 @@ def main():
     bands = [f"A{i:02d}" for i in range(64)]
     names = [f"A{i}" for i in range(1, 65)]
     embedding = collection.mosaic().select(bands, names).setDefaultProjection(first.select(0).projection())
-    # The fine raster defines the lattice used by the local training and inference workflow.
+    # EPSG:3857 matches the window-coordinate convention in Supplement S1/S3.
+    # These projected coordinate lengths must not be described as geodesic distances.
     fine = embedding.reproject(crs="EPSG:3857", scale=10)
     folder = cfg["earth_engine"].get("drive_folder", "LST_NAT_exports")
     tasks = [("embedding_10m", ee.batch.Export.image.toDrive(
         image=fine.toFloat(), description="embedding_10m", folder=folder,
         fileNamePrefix="embedding_10m", region=region, crs="EPSG:3857", scale=10,
         maxPixels=1e13, fileFormat="GeoTIFF", formatOptions={"cloudOptimized": True}))]
-    # Optional coarse exports reproduce the reduceResolution(mean) operation stated in S3.1.
-    # Local training re-aggregates the downloaded fine grid to prevent grid mismatch.
+    # S3.1 training consumes these reduceResolution(mean) exports through
+    # inputs.embedding_coarse. Each export is aligned to its native TRIMS grid.
     for time in TIMES:
         with rasterio.open(input_path(cfg, "native_lst", time)) as native:
             tr = native.transform

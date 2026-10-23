@@ -5,7 +5,8 @@
     "permutations": 999,
     "bootstrap": 1000,
     "sg_window": 7,
-    "sg_order": 2
+    "sg_order": 2,
+    "spatial_support": "station_epsg3857_v1"
   },
   "training": {
     "deterministic": true
@@ -37,6 +38,12 @@
       "T2": "00-Support/data/legacy/T2",
       "T3": "00-Support/data/legacy/T3",
       "T4": "00-Support/data/legacy/T4"
+    },
+    "embedding_coarse": {
+      "T1": "00-Support/data/T1_embedding_mean.tif",
+      "T2": "00-Support/data/T2_embedding_mean.tif",
+      "T3": "00-Support/data/T3_embedding_mean.tif",
+      "T4": "00-Support/data/T4_embedding_mean.tif"
     }
   }
 }

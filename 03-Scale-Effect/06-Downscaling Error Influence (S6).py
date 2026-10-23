@@ -1,7 +1,9 @@
 """Downscaling-error sensitivity of the global bivariate Lee's L scale curves.
 
-This is a complete, self-contained implementation of the supplementary S6
-experiment.  It does not import the shared ``00-Support`` package.
+This historical filename is retained for compatibility. It is a LEGACY
+TABLE DIAGNOSTIC, not Supplement S5. Use
+``06-Downscaling Error Influence (S5).py --config <config.json>`` for S5's
+pixelwise Gaussian-noise experiment. Legacy mode requires --legacy-table.
 
 For each time-of-day case and each relative LST perturbation
 (0%, 5%, 10%), the script perturbs the scale-window LST values in the legacy
@@ -9,9 +11,10 @@ multiscale table, rebuilds the adaptive Gaussian KNN weights (K = 8), and
 recomputes global bivariate Lee's L at every spatial scale.  It then extracts
 an elbow from the smoothed curve and draws the 2 x 2 combined figure.
 
+The legacy diagnostic uses UNIFORM noise on table values, not pixelwise Gaussian noise.
 All three error levels use the same Savitzky-Golay settings:
 window length = 7, polynomial order = 2.  The same settings are used for the
-elbow search and for the shape-preserving smoothing of the perturbed curves.
+elbow search and plotting. Curves are smoothed independently without shape anchoring.
 
 Inputs
 ------
@@ -22,8 +25,10 @@ Inputs
     Night Terra Multiscale.gpkg
     Night Aqua Multiscale.gpkg
 
-Each table must contain the NAT column (TEM10/TEM13/TEM23/TEM01) and the
-window-mean LST columns L10, L30, ..., L1290.
+Each table must contain the NAT column (TEM10/TEM13/TEM22/TEM01) and the
+window-mean LST columns L10, L30, ..., L1210.
+This table-based diagnostic does not reconstruct physical sampling supports;
+its input scale labels have unverified ground-distance meaning.
 
 Outputs
 -------
@@ -37,9 +42,9 @@ By default, results are written to ``./RES`` next to this script:
 
 Usage
 -----
-    python "06-Downscaling Error Influence (S6).py"
-    python "06-Downscaling Error Influence (S6).py" --scale-dir "D:/data/RES"
-    python "06-Downscaling Error Influence (S6).py" --plot-only
+    python "06-Downscaling Error Influence (S6).py" --legacy-table
+    python "06-Downscaling Error Influence (S6).py" --legacy-table --scale-dir "D:/data/RES"
+    python "06-Downscaling Error Influence (S6).py" --legacy-table --plot-only
 """
 from __future__ import annotations
 
@@ -110,9 +115,9 @@ def configure_paths(scale_dir: Path | None, out_dir: Path | None) -> None:
 # ---------------------------------------------------------------------------
 # Analysis constants
 # ---------------------------------------------------------------------------
-NEIGHBOR_SIZES = list(range(10, 1310, 20))  # 10, 30, ..., 1290 m
+NEIGHBOR_SIZES = list(range(10, 1211, 20))  # 61 labels, 10, 30, ..., 1210
 SCALE_COLS = [f"L{size}" for size in NEIGHBOR_SIZES]
-PLOT_MAX_SCALE = 1200
+PLOT_MAX_SCALE = 1210
 REL_ERRORS = (0.0, 0.05, 0.10)
 RNG_SEED = 108
 
@@ -127,28 +132,13 @@ SYMMETRY_METHOD = "mean"
 SG_WINDOW = 7
 SG_ORDER = 2
 
-# All error levels share the SG 7/2 window.  residual_mix controls how much of
-# the perturbed curve's residual is added back after the common-shape fit.
-SMOOTH_PARAMS: dict[str, dict[float, tuple[int, int, float]]] = {
-    key: {
-        0.0: (SG_WINDOW, SG_ORDER, 1.0),
-        0.05: (SG_WINDOW, SG_ORDER, 0.8),
-        0.10: (SG_WINDOW, SG_ORDER, 0.6),
-    }
-    for key in ("T1", "T2", "T3", "T4")
-}
-SHAPE_ANCHOR_TO_ORIGINAL = True
+# Every scenario uses the same smoothing and the highest-deviation knee.
+SMOOTH_PARAMS = {key: {sigma: (SG_WINDOW, SG_ORDER, 1.0) for sigma in REL_ERRORS}
+                 for key in ("T1", "T2", "T3", "T4")}
+SHAPE_ANCHOR_TO_ORIGINAL = False
 ELBOW_SMOOTH_WINDOW = SG_WINDOW
 ELBOW_SMOOTH_POLYORDER = SG_ORDER
-
-# Elbow rank: which local maximum farthest from the chord to retain.
-# Layout mirrors SMOOTH_PARAMS: case x 0% / 5% / 10%.
-ELBOW_RANK: dict[str, dict[float, int]] = {
-    "T1": {0.0: 1, 0.05: 2, 0.10: 1},
-    "T2": {0.0: 1, 0.05: 1, 0.10: 1},
-    "T3": {0.0: 3, 0.05: 2, 0.10: 4},
-    "T4": {0.0: 1, 0.05: 2, 0.10: 2},
-}
+ELBOW_RANK = {key: {sigma: 1 for sigma in REL_ERRORS} for key in SMOOTH_PARAMS}
 
 COLOR_LEE = "#9673A6"
 COLOR_ERR05 = "#5B92C8"
@@ -175,7 +165,7 @@ CASES = (
         "key": "T3",
         "title": "22:00–23:00",
         "file": "Night Terra Multiscale.gpkg",
-        "tem": "TEM23",
+        "tem": "TEM22",
         "ylim_pad_top": 0.01,
     },
     {
@@ -749,7 +739,7 @@ def plot_combined(records: pd.DataFrame) -> None:
         )
         ax.set_ylabel("Global Bivariate Lee's L", fontsize=9, labelpad=6)
         if case["key"] in {"T3", "T4"}:
-            ax.set_xlabel("Spatial Scale (m)", fontsize=9)
+            ax.set_xlabel("Input scale label (ground distance unverified)", fontsize=9)
 
         handles, labels = ax.get_legend_handles_labels()
         order = [
@@ -836,6 +826,7 @@ def run_case(case: dict, rng: np.random.Generator) -> pd.DataFrame:
                     "rel_error": rel_error,
                     "scale_col": col,
                     "scale_m": scale_m,
+                    "scale_support": "unverified_input_labels",
                     "lee_l": lee_l,
                     "n": n,
                 }
@@ -885,6 +876,7 @@ def write_elbow_summary(records: pd.DataFrame) -> pd.DataFrame:
                     "rel_error": rel_error,
                     "elbow_rank": elbow_rank,
                     "elbow_scale_m": int(scales[elbow_idx]),
+                    "scale_support": "unverified_input_labels",
                     "L_opt": lee_opt,
                     "L_min": lee_min,
                     "L_1210": lee_1210,
@@ -911,8 +903,10 @@ def replot() -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="S6 downscaling-error sensitivity of global bivariate Lee's L."
+        description="Legacy table diagnostic; use the S5 entry for the manuscript experiment."
     )
+    parser.add_argument("--legacy-table", action="store_true",
+                        help="Explicitly select historical table-level uniform noise (not S5)")
     parser.add_argument(
         "--scale-dir",
         type=Path,
@@ -930,11 +924,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Replot from an existing lee_curves.csv without recomputing Lee's L.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.legacy_table:
+        parser.error("This legacy table route is not S5. Run '06-Downscaling Error Influence (S5).py' with --config, "
+                     "or explicitly opt in using --legacy-table.")
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+    print("LEGACY TABLE DIAGNOSTIC: uniform noise on aggregated values; not the S5 pixel-noise experiment.")
     configure_paths(args.scale_dir, args.out_dir)
     if args.plot_only:
         replot()

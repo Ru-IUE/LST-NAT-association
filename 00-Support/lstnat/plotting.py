@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from .settings import TIMES, ZONES, output_path, save_run
+from .raster import require_scale_support, configured_support, MANUSCRIPT_SUPPORT
 
 
 def run(cfg):
@@ -17,6 +18,11 @@ def run(cfg):
         # Preserve the natural-area label "NA" instead of parsing it as missing.
         data = pd.read_csv(path, keep_default_na=False, na_values=[""])
         knees = pd.read_csv(output_path(cfg, folder, "noise_knees.csv" if folder == "sensitivity" else "knees.csv"), keep_default_na=False, na_values=[""])
+        if folder != "legacy_diagnostic":
+            require_scale_support(data, configured_support(cfg))
+            require_scale_support(knees, configured_support(cfg))
+        scale_label = "Input scale label (ground distance unverified)" if folder == "legacy_diagnostic" else (
+            "Square side length (EPSG:3857 m)" if configured_support(cfg) == MANUSCRIPT_SUPPORT else "Local square side length (AEQD m)")
         fig, axes = plt.subplots(2, 2, figsize=(10, 7), constrained_layout=True)
         for ax, time in zip(axes.ravel(), TIMES):
             subset = data[(data.time == time) & (data.zone == "GA") & (data.metric == "lee")]
@@ -28,7 +34,7 @@ def run(cfg):
                 if pd.notna(k.scale):
                     ax.scatter(k.scale, k.value, color=line.get_color(), s=25)
                     ax.axvline(k.scale, color=line.get_color(), lw=.6, ls="--", alpha=.6)
-            ax.set(title=time, xlabel="Aggregation scale (m)", ylabel="Global Lee's L")
+            ax.set(title=time, xlabel=scale_label, ylabel="Global Lee's L")
             ax.legend(frameon=False)
         for suffix in ["svg", "png"]:
             fig.savefig(output_path(cfg, "figures", folder+"_global."+suffix), dpi=300)
@@ -45,7 +51,7 @@ def run(cfg):
                     if pd.notna(k.scale):
                         target.scatter(k.scale, k.value, color=color, marker="s" if metric == "spearman" else "o")
                     target.set_ylabel("Spearman's rho" if metric == "spearman" else "Global Lee's L", color=color)
-                ax.set(title=time, xlabel="Aggregation scale (m)")
+                ax.set(title=time, xlabel=scale_label)
             fig.savefig(output_path(cfg, "figures", "S4_metric_comparison.svg"))
             plt.close(fig)
         if folder == "scale":
@@ -54,7 +60,7 @@ def run(cfg):
                 for zone in ZONES.values():
                     group = data[(data.time == time) & (data.zone == zone) & (data.metric == "mean_local_lee")].sort_values("scale_m")
                     ax.plot(group.scale_m, group.smoothed, label=zone)
-                ax.set(title=time, xlabel="Aggregation scale (m)", ylabel="Mean local Lee's L")
+                ax.set(title=time, xlabel=scale_label, ylabel="Mean local Lee's L")
                 ax.legend(frameon=False)
             fig.savefig(output_path(cfg, "figures", "zones.svg"))
             plt.close(fig)
@@ -78,17 +84,24 @@ def run(cfg):
                 ax.set_xticks(positions, [time+" "+zone for zone in ZONES.values() for time in times], rotation=30)
                 ax.set(title=label+" scale response distributions", ylabel="Mean local Lee's L")
                 scale_ax.set_yticks(range(4), list(ZONES.values()))
-                scale_ax.set(title=label+" knees", xlabel="Optimal scale (m)")
+                scale_ax.set(title=label+" knees", xlabel=scale_label)
             fig.savefig(output_path(cfg, "figures", "zone_distributions_and_knees.svg"))
             plt.close(fig)
     path = output_path(cfg, "association", "correlations.csv")
     if path.exists():
         data = pd.read_csv(path, keep_default_na=False, na_values=[""])
+        balanced = pd.read_csv(output_path(cfg, "association", "balanced_correlations.csv"),
+                               keep_default_na=False, na_values=[""])
         fig, axes = plt.subplots(1, 5, figsize=(13, 3.2), constrained_layout=True)
         for ax, zone in zip(axes, ["GA", *ZONES.values()]):
-            sub = data[data.zone == zone].set_index("time").reindex(TIMES)
-            ax.plot(list(TIMES), sub.rho, marker="o", label="Spearman")
-            ax.plot(list(TIMES), sub.partial_rho, marker="s", label="Partial Spearman")
+            # S1.2 compares zones at equal sample size; GA remains the observed
+            # full-region coefficient. Preserve raw zone estimates in the CSV.
+            source = data if zone == "GA" else balanced
+            sub = source[source.zone == zone].set_index("time").reindex(TIMES)
+            rho = sub.rho if zone == "GA" else sub.balanced_rho
+            partial = sub.partial_rho if zone == "GA" else sub.balanced_partial_rho
+            ax.plot(list(TIMES), rho, marker="o", label="Spearman")
+            ax.plot(list(TIMES), partial, marker="s", label="Partial Spearman")
             ax.set(title=zone, ylabel="Rank association")
         axes[0].legend(frameon=False, fontsize=8)
         fig.savefig(output_path(cfg, "figures", "correlations.svg"))
